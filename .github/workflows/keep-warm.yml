@@ -1,0 +1,31 @@
+name: Keep Render backend warm
+
+# Render's free tier spins the service down after ~15 min of inactivity,
+# causing a slow cold start on the next request. This pings the health
+# endpoint on a schedule so the instance stays awake.
+
+on:
+  schedule:
+    # Every 10 minutes. (GitHub cron is UTC; interval-based so timezone is moot.)
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          for url in \
+            "https://cinchbase-api.onrender.com/health" \
+            "https://cinchbase-api.onrender.com/"; do
+            echo "Pinging $url"
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 "$url" || echo "000")
+            echo "  -> HTTP $code"
+            if [ "$code" != "000" ] && [ "$code" -lt "500" ]; then
+              echo "Backend is awake (HTTP $code)."
+              exit 0
+            fi
+          done
+          echo "All ping attempts failed."
+          exit 1
